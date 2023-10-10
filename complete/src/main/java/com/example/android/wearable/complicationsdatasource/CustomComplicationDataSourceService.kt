@@ -16,20 +16,30 @@
 package com.example.android.wearable.complicationsdatasource
 
 import android.content.ComponentName
+import android.support.wearable.complications.ComplicationText
+import android.support.wearable.complications.ComplicationText.TimeDifferenceBuilder
 import android.util.Log
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
+import androidx.wear.watchface.complications.data.CountDownTimeReference
 import androidx.wear.watchface.complications.data.LongTextComplicationData
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.RangedValueComplicationData
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
+import androidx.wear.watchface.complications.data.TimeDifferenceComplicationText
+import androidx.wear.watchface.complications.data.TimeDifferenceStyle
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import com.example.android.wearable.complicationsdatasource.data.TAP_COUNTER_PREF_KEY
 import com.example.android.wearable.complicationsdatasource.data.dataStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.time.Instant
+import java.time.LocalDate
+import java.util.Calendar
 import java.util.Locale
+import kotlin.math.floor
+import kotlin.math.roundToInt
 
 /**
  * Example watch face complication data source provides a number that can be incremented on tap.
@@ -62,12 +72,14 @@ class CustomComplicationDataSourceService : SuspendingComplicationDataSourceServ
      * This will be called on a background thread.
      */
     override fun getPreviewData(type: ComplicationType): ComplicationData {
-        return ShortTextComplicationData.Builder(
-            text = PlainComplicationText.Builder(text = "6!").build(),
-            contentDescription = PlainComplicationText.Builder(text = "Short Text version of Number.").build()
-        )
-            .setTapAction(null)
-            .build()
+        return RangedValueComplicationData.Builder(
+            value = 4f,
+            min = 0f,
+            //max = ComplicationTapBroadcastReceiver.MAX_NUMBER.toFloat(),
+            max = 10f,
+            contentDescription = PlainComplicationText
+                .Builder(text = "Ranged Value version of Number.").build()
+        ).build()
     }
 
     /*
@@ -81,55 +93,41 @@ class CustomComplicationDataSourceService : SuspendingComplicationDataSourceServ
      *       ComplicationDataSourceUpdateRequester.requestUpdate method.
      */
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
-        Log.d(TAG, "onComplicationRequest() id: ${request.complicationInstanceId}")
-
-        // Create Tap Action so that the user can trigger an update by tapping the complication.
-        val thisDataSource = ComponentName(this, javaClass)
-        // We pass the complication id, so we can only update the specific complication tapped.
-        val complicationPendingIntent =
-            ComplicationTapBroadcastReceiver.getToggleIntent(
-                this,
-                thisDataSource,
-                request.complicationInstanceId
-            )
-
-        // Retrieves your data, in this case, we grab an incrementing number from Datastore.
-        val number: Int = applicationContext.dataStore.data
-            .map { preferences ->
-                preferences[TAP_COUNTER_PREF_KEY] ?: 0
-            }
-            .first()
-
-        val numberText = String.format(Locale.getDefault(), "%d!", number)
-
         return when (request.complicationType) {
 
-            ComplicationType.SHORT_TEXT -> ShortTextComplicationData.Builder(
-                text = PlainComplicationText.Builder(text = numberText).build(),
-                contentDescription = PlainComplicationText
-                    .Builder(text = "Short Text version of Number.").build()
-            )
-                .setTapAction(complicationPendingIntent)
-                .build()
-
-            ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(
-                text = PlainComplicationText.Builder(text = "Number: $numberText").build(),
-                contentDescription = PlainComplicationText
-                    .Builder(text = "Long Text version of Number.").build()
-            )
-                .setTapAction(complicationPendingIntent)
-                .build()
-
-            ComplicationType.RANGED_VALUE -> RangedValueComplicationData.Builder(
-                value = number.toFloat(),
-                min = 0f,
-                max = ComplicationTapBroadcastReceiver.MAX_NUMBER.toFloat(),
-                contentDescription = PlainComplicationText
-                    .Builder(text = "Ranged Value version of Number.").build()
-            )
-                .setText(PlainComplicationText.Builder(text = numberText).build())
-                .setTapAction(complicationPendingIntent)
-                .build()
+            ComplicationType.RANGED_VALUE -> {
+                // TODO: set time of day on watch somehow, per complication?
+                val curvalue = Calendar.getInstance().timeInMillis
+                var mincal = Calendar.getInstance()
+                mincal.set(Calendar.HOUR_OF_DAY, 22)
+                mincal.set(Calendar.MINUTE, 0)
+                // check if the mincal time is greater than curvalue; if so, set the day back one
+                if (mincal.timeInMillis > curvalue) {
+                    mincal.add(Calendar.DATE, -1)
+                }
+                var maxcal = Calendar.getInstance()
+                maxcal.set(Calendar.HOUR_OF_DAY, 22)
+                maxcal.set(Calendar.MINUTE, 0)
+                // check if the curvalue is greater than maxcal time; if so, set the maxcal forward one day
+                if (curvalue > maxcal.timeInMillis) {
+                    maxcal.add(Calendar.DATE, 1)
+                }
+                val minnum = mincal.timeInMillis
+                val maxnum = maxcal.timeInMillis
+                return RangedValueComplicationData.Builder(
+                    value = curvalue.toFloat(),
+                    min = minnum.toFloat(),
+                    //max = ComplicationTapBroadcastReceiver.MAX_NUMBER.toFloat(),
+                    max = maxnum.toFloat(),
+                    contentDescription = PlainComplicationText
+                        .Builder(text = "Ranged Value version of Number.").build()
+                )
+                    .setText(TimeDifferenceComplicationText.Builder(
+                        style = TimeDifferenceStyle.SHORT_DUAL_UNIT,
+                        countDownTimeReference = CountDownTimeReference(Instant.ofEpochMilli(maxnum))
+                    ).build())
+                    .build()
+            }
 
             else -> {
                 if (Log.isLoggable(TAG, Log.WARN)) {

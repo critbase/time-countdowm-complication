@@ -44,7 +44,7 @@
 
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="SHORT_TEXT,LONG_TEXT,RANGED_VALUE" />
+                android:value="RANGED_VALUE" />
 
             <!--
             When your complication data provider is active, UPDATE_PERIOD_SECONDS specifies how
@@ -63,9 +63,8 @@
             -->
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="0" />
+                android:value="600" />
         </service>
 
-        <receiver android:name=".ComplicationTapBroadcastReceiver" />
     </application>
 </manifest>
